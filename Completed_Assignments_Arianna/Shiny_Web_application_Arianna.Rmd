@@ -6,23 +6,162 @@ output: html_document
 ---
 
 ```{r}
-# Install packages 
+# Load libraries
 
-install.packages("shiny")
 library(shiny)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(dplyr)
+library(ComplexHeatmap)
 ```
 
 ```{r}
 #load and prepare data 
 metaGenome <-  read.csv("Z_Data_final.csv")
+metaGenome <- metaGenome %>% 
+  rownames_to_column("original_rowname") %>% 
+  separate(Index, into = c("kingdom", "phylum", "class","order","family","genus"), sep = "\\|")
+metaGenome<- metaGenome[-c(384), -c(1:6)]
+
 row.names(metaGenome) <- metaGenome[,1]
 Phenotype <- read.csv("3_data_phenotypes_OmicEarTags_header copy.csv")
 row.names(Phenotype) <- Phenotype[,1]
 common_samples <- intersect(colnames(metaGenome),colnames(Phenotype))
-metaGenome <- metaGenome[,common_samples]
-Phenotype  <- Phenotype [,common_samples]
+Data <- metaGenome[,common_samples]
+phenotype_data <- Phenotype [,common_samples]
 
-Data <- rbind(Phenotype,metaGenome)
+Data<- as.data.frame(t(rbind(phenotype_data,Data)))
+```
 
+```{r}
+
+# Pivot the data from wide to long format
+
+Data<- rownames_to_column(Data, "Samples")
+
+df_long<- Data%>% 
+  pivot_longer(
+    cols = -c(Samples,Strain, Age, Diet, Pheno_BodyWeight, Pheno_LiverWeight),
+    names_to = "Bacteria",
+    values_to = "Abundance"
+  )
+
+df_long <- df_long %>% 
+  mutate(Abundance = as.numeric(Abundance), Age = as.numeric(Age), Pheno_BodyWeight = as.numeric(Pheno_BodyWeight))
+
+df <- df_long
+df<- na.omit(df)
+```
+
+```{r}
+# Define the UI
+ui <- fluidPage(
+  titlePanel("Bacteria Abundance Explorer"),
+  sidebarLayout(
+    sidebarPanel(
+      uiOutput("bacteriaSelect"),
+      selectInput("diet", "Select Diet:", unique(df$Diet)),
+      sliderInput("age", "Select Age Range:", min = min(df$Age), max = max(df$Age), value = c(min(df$Age), max(df$Age)))
+    ),
+    mainPanel(
+      plotOutput("plot"),
+      plotOutput("heatmap"),
+      plotOutput("scatter")
+    )
+  )
+)
+
+# Define the server function
+server <- function(input, output) {
+  # Calculate the top 20 most abundant bacteria
+  top_bacteria <- reactive({
+    df %>% 
+      group_by(Bacteria) %>% 
+      summarise(Abundance = sum(Abundance)) %>% 
+      arrange(desc(Abundance)) %>% 
+      head(20) %>% 
+      pull(Bacteria)
+  })
+  
+  # Create the selectInput for bacteria
+  output$bacteriaSelect <- renderUI({
+    selectInput("Bacteria", "Select Bacteria:", top_bacteria())
+  })
+  
+  # Create the boxplot
+  output$plot <- renderPlot({
+    # Filter the data to the selected bacteria
+    filtered_df <- df %>% 
+      filter(Bacteria == input$Bacteria)
+    
+    # Create the boxplot, colored by Diet
+    p <- ggplot(filtered_df, aes(x = Diet, y = Abundance, color = Diet)) + 
+      geom_boxplot() + 
+      theme_classic() + 
+      labs(x = "Diet", y = "Abundance", title = "Abundance by Diet")
+    print(p)
+    p
+  })
+  
+  # Create the heatmap
+  output$heatmap <- renderPlot({
+    # Filter the data to the selected diet
+    filtered_df <- df %>% 
+      filter(Bacteria %in% top_bacteria()) %>% 
+      filter(Diet == input$diet)
+    
+    # Calculate the correlation between bodyweight and bacteria abundance
+    correlation_weight <- filtered_df %>% 
+      group_by(Bacteria) %>% 
+      summarise(Correlation = cor(Pheno_BodyWeight, Abundance, use = "complete.obs"))
+    
+    correlation_Age <- filtered_df %>% 
+      group_by(Bacteria) %>% 
+      summarise(Correlation = cor(Age, Abundance, use = "complete.obs"))
+    
+    # Combine the correlations
+    correlation_df <- rbind(transform(correlation_weight, Type = "Body Weight"),
+                            transform(correlation_Age, Type = "Age"))
+    
+    # Pivot the data frame
+    correlation_matrix <- pivot_wider(correlation_df, 
+                                      names_from = "Type", 
+                                      values_from = "Correlation") %>% 
+      column_to_rownames("Bacteria") %>% 
+      as.matrix()
+    
+    # Remove any NA or NaN values
+    correlation_matrix <- correlation_matrix[!(rowSums(is.na(correlation_matrix)) > 0) & 
+                                            !(rowSums(is.nan(correlation_matrix)) > 0), ]
+    
+    # Create the heatmap
+    p <- Heatmap(correlation_matrix, 
+                 col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+                 row_names_gp = gpar(fontsize = 10),
+                 column_names_gp = gpar(fontsize = 10))
+    print(p)
+    p
+  })
+  
+  # Create the scatter plot
+  output$scatter <- renderPlot({
+    # Filter the data to the selected bacteria and age range
+    filtered_df <- df %>% 
+      filter(Bacteria == input$Bacteria) %>% 
+      filter(Age >= input$age[1] & Age <= input$age[2])
+    
+    # Create the scatter plot, colored by Diet
+    p <- ggplot(filtered_df, aes(x = Pheno_BodyWeight, y = Abundance, color = Diet)) + 
+      geom_point() + 
+      theme_classic() + 
+      labs(x = "Body Weight", y = "Abundance", title = "Body Weight vs Abundance for Selected Bacteria")
+    print(p)
+    p
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
 ```
 
