@@ -13,55 +13,16 @@ library(shiny)
 ```
 
 ```{r}
+#load and prepare data 
+metaGenome <-  read.csv("Z_Data_final.csv")
+row.names(metaGenome) <- metaGenome[,1]
+Phenotype <- read.csv("3_data_phenotypes_OmicEarTags_header copy.csv")
+row.names(Phenotype) <- Phenotype[,1]
+common_samples <- intersect(colnames(metaGenome),colnames(Phenotype))
+metaGenome <- metaGenome[,common_samples]
+Phenotype  <- Phenotype [,common_samples]
 
-# Define UI for app that draws a histogram ----
-ui <- page_sidebar(
-  # App title ----
-  title = "Hello Shiny!",
-  # Sidebar panel for inputs ----
-  sidebar = sidebar(
-    # Input: Slider for the number of bins ----
-    sliderInput(
-      inputId = "bins",
-      label = "Number of bins:",
-      min = 1,
-      max = 50,
-      value = 30
-    )
-  ),
-  # Output: Histogram ----
-  plotOutput(outputId = "distPlot")
-)
+Data <- rbind(Phenotype,metaGenome)
 
-```
-
-```{r}
-# Define server logic required to draw a histogram ----
-server <- function(input, output) {
-
-  # Histogram of the Old Faithful Geyser Data ----
-  # with requested number of bins
-  # This expression that generates a histogram is wrapped in a call
-  # to renderPlot to indicate that:
-  #
-  # 1. It is "reactive" and therefore should be automatically
-  #    re-executed when inputs (input$bins) change
-  # 2. Its output type is a plot
-  output$distPlot <- renderPlot({
-
-    x    <- faithful$waiting
-    bins <- seq(min(x), max(x), length.out = input$bins + 1)
-
-    hist(x, breaks = bins, col = "#007bc2", border = "white",
-         xlab = "Waiting time to next eruption (in mins)",
-         main = "Histogram of waiting times")
-
-    })
-
-}
-```
-
-```{r}
-shinyApp(ui = ui, server = server)
 ```
 
