@@ -1,5 +1,5 @@
 # Assignemt overview
-### The completed assignment can be found in the folder Completed_Assigments_Arianna 
+### The completed assignments can be found in the folder Completed_Assigments_Arianna 
 ## NextImmun2PythonFinalExam_Arianna.ipynb
 This file has been copied into Github from Google Colab and contains the completed Python assessment
 ## Shiny_Web_application_Arianna.Rmd
